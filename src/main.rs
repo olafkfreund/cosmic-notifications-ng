@@ -2,6 +2,7 @@ mod app;
 mod config;
 mod localize;
 mod subscriptions;
+mod widgets;
 
 use config::APP_ID;
 use tracing::{info, metadata::LevelFilter};
