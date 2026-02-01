@@ -34,8 +34,10 @@ pub fn notification_image<'a, Message: 'a>(
   }
 
   // Use cosmic's icon::from_raster_pixels for RGBA data
-  // The icon is wrapped in a container to constrain its size
-  let icon_widget = icon::from_raster_pixels(image.width, image.height, image.data.clone()).icon();
+  // Apply .size() on the Icon widget (after .icon()) to scale to desired display size
+  let icon_widget = icon::from_raster_pixels(image.width, image.height, image.data.clone())
+    .icon()
+    .size(width);  // Scale icon to target size
 
   container(icon_widget)
     .width(Length::Fixed(width as f32))

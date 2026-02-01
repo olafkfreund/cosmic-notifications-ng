@@ -1,5 +1,5 @@
 {
-  description = "Launcher for the COSMIC desktop environment";
+  description = "Enhanced notifications daemon for COSMIC desktop with rich content support";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -16,7 +16,10 @@
   };
 
   outputs = { self, nixpkgs, flake-utils, nix-filter, crane, fenix }:
-    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
+    let
+      supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
+    in
+    flake-utils.lib.eachSystem supportedSystems (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         craneLib = crane.lib.${system}.overrideToolchain fenix.packages.${system}.stable.toolchain;
@@ -29,6 +32,7 @@
               ./flake.lock
               ./LICENSE
               ./debian
+              ./nix
             ];
           };
           nativeBuildInputs = with pkgs; [
@@ -78,7 +82,19 @@
           inputsFrom = builtins.attrValues self.checks.${system};
           LD_LIBRARY_PATH = pkgs.lib.strings.makeLibraryPath (builtins.concatMap (d: d.runtimeDependencies) inputsFrom);
         };
-      });
+      }) // {
+        nixosModules = {
+          default = import ./nix/module.nix;
+          cosmic-notifications-ng = import ./nix/module.nix;
+        };
+
+        overlays = {
+          default = final: prev: {
+            cosmic-notifications = self.packages.${prev.system}.default;
+            cosmic-notifications-ng = self.packages.${prev.system}.default;
+          };
+        };
+      };
 
   nixConfig = {
     # Cache for the Rust toolchain in fenix

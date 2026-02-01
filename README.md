@@ -1,6 +1,29 @@
-# Cosmic Notifications
+# Cosmic Notifications NG
 
-Layer Shell notifications daemon which integrates with COSMIC, featuring rich notification support including images, action buttons, progress indicators, and animated content.
+Enhanced Layer Shell notifications daemon for the COSMIC desktop environment, featuring **rich notification support** including images, action buttons, progress indicators, clickable URLs, and animated content.
+
+## What Makes This Different
+
+This is an enhanced fork of the standard COSMIC notifications daemon with significant improvements:
+
+| Feature | Standard COSMIC | COSMIC Notifications NG |
+|---------|-----------------|------------------------|
+| **Image Support** | Basic icon display | Full image-path/image-data hints, auto-resizing, preview images |
+| **Image Scaling** | Fixed sizes | Dynamic scaling up to 128x128 with proper aspect ratio |
+| **Animated Images** | Not supported | GIF, APNG, WebP with frame timing (100 frames/30s limits) |
+| **Clickable URLs** | Not supported | Auto-detection with secure http/https handling |
+| **Progress Bars** | Basic | Smooth animated progress with value hints |
+| **HTML Sanitization** | Limited | Full ammonia-based XSS protection |
+| **Action Buttons** | Basic | Themed buttons with proper DBus signals |
+| **Configuration** | Limited | Extensive TOML-based configuration |
+| **NixOS Module** | Not provided | Full NixOS module with overlay support |
+
+### Key Enhancements
+
+1. **YouTube/Media Previews**: When apps send notifications with image hints, preview images display at proper size (128x128)
+2. **Clickable Links**: URLs in notification body text become clickable buttons
+3. **Better Image Handling**: Fixed image-path parsing to work with absolute file paths, not just file:// URLs
+4. **Proper Icon Scaling**: Icons from `icon::from_raster_pixels()` now scale correctly using `.size()` method
 
 ## Features
 
@@ -143,7 +166,93 @@ Run the test suite to verify all features:
 
 For detailed testing instructions with real applications (Firefox, Thunderbird, Spotify, etc.), see [TESTING.md](TESTING.md).
 
-# Building
+## NixOS Installation
+
+### Flake-based Installation (Recommended)
+
+Add this flake to your `flake.nix` inputs:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    cosmic-notifications-ng.url = "github:olafkfreund/cosmic-notifications-ng";
+  };
+
+  outputs = { self, nixpkgs, cosmic-notifications-ng, ... }: {
+    nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        # Use the overlay to replace system cosmic-notifications
+        { nixpkgs.overlays = [ cosmic-notifications-ng.overlays.default ]; }
+
+        # Or use the NixOS module for more control
+        cosmic-notifications-ng.nixosModules.default
+        {
+          services.cosmic-notifications-ng = {
+            enable = true;
+            settings = {
+              show_images = true;
+              show_actions = true;
+              max_image_size = 128;
+              enable_links = true;
+              enable_animations = true;
+            };
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+### Module Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | bool | `false` | Enable the notification daemon |
+| `package` | package | `pkgs.cosmic-notifications-ng` | Package to use |
+| `replaceSystemPackage` | bool | `true` | Replace system cosmic-notifications via overlay |
+| `settings.show_images` | bool | `true` | Show images in notifications |
+| `settings.show_actions` | bool | `true` | Show action buttons |
+| `settings.max_image_size` | int | `128` | Maximum image size in pixels |
+| `settings.enable_links` | bool | `true` | Make URLs clickable |
+| `settings.enable_animations` | bool | `true` | Enable GIF/APNG/WebP animations |
+
+### Quick Overlay Installation
+
+For a simple drop-in replacement without configuration:
+
+```nix
+{
+  nixpkgs.overlays = [
+    (final: prev: {
+      cosmic-notifications = cosmic-notifications-ng.packages.${prev.system}.default;
+    })
+  ];
+}
+```
+
+After rebuilding (`sudo nixos-rebuild switch`), restart the COSMIC panel to load the new daemon.
+
+### Verify Installation
+
+```bash
+# Check which binary is running
+ls -la /proc/$(pgrep -f cosmic-notifications | head -1)/exe
+
+# Send a test notification with image
+gdbus call --session \
+  --dest org.freedesktop.Notifications \
+  --object-path /org/freedesktop/Notifications \
+  --method org.freedesktop.Notifications.Notify \
+  "TestApp" 0 "dialog-information" \
+  "Test Notification" \
+  "Visit https://github.com for more info" \
+  "[]" "{'urgency': <byte 1>}" 5000
+```
+
+# Building from Source
 
 Cosmic Notifications is set up to build a deb and a Nix flake, but it can be built using just.
 
