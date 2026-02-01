@@ -29,6 +29,7 @@
 // - Card list animations are handled efficiently by cosmic_time::anim! macro
 
 use crate::subscriptions::notifications;
+use crate::widgets::{notification_image, ImageSize, notification_progress, should_show_progress, RichCardConfig};
 use cosmic::app::{Core, Settings};
 use cosmic::cosmic_config::{Config, CosmicConfigEntry};
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
@@ -45,7 +46,10 @@ use cosmic::surface;
 use cosmic::widget::{autosize, button, container, icon, text};
 use cosmic::{Application, Element, app::Task};
 use cosmic_notifications_config::NotificationsConfig;
-use cosmic_notifications_util::{ActionId, CloseReason, Notification};
+use cosmic_notifications_util::{
+    ActionId, CloseReason, Hint, Image, Notification, NotificationImage, ProcessedImage,
+    detect_links, sanitize_html,
+};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
 use cosmic_time::{Instant, Timeline, anim, id};
 use iced::Alignment;
@@ -100,9 +104,232 @@ enum Message {
     Frame(Instant),
     Ignore,
     Surface(surface::Action),
+    /// Link clicked in notification body
+    LinkClicked(String),
+    /// Action button clicked (notification_id, action_id)
+    ActionClicked(u32, String),
 }
 
 impl CosmicNotifications {
+    /// Render a notification using rich notification widgets
+    ///
+    /// This creates a rich notification card with:
+    /// - App icon and name in the header
+    /// - Optional notification image (thumbnail or icon)
+    /// - Summary and body text with clickable links
+    /// - Progress bar if present in hints
+    /// - Action buttons if present
+    fn render_rich_notification(&self, n: &Notification, config: &RichCardConfig) -> Element<'static, Message> {
+        // Header: App icon, app name, close button
+        let app_name_text = text::caption(if n.app_name.len() > 24 {
+            Cow::from(format!("{:.26}...", n.app_name.lines().next().unwrap_or_default()))
+        } else {
+            Cow::from(n.app_name.clone())
+        })
+        .width(Length::Fill);
+
+        // App icon from notification
+        let app_icon_elem: Element<'static, Message> = if let Some(icon_widget) = n.notification_icon() {
+            icon_widget.size(16).into()
+        } else if !n.app_icon.is_empty() {
+            icon::from_name(n.app_icon.as_str()).size(16).symbolic(true).into()
+        } else {
+            icon::from_name("application-x-executable-symbolic").size(16).symbolic(true).into()
+        };
+
+        let close_button = button::custom(
+            icon::from_name("window-close-symbolic")
+                .size(16)
+                .symbolic(true),
+        )
+        .on_press(Message::Dismissed(n.id))
+        .class(cosmic::theme::Button::Text);
+
+        // Optional timestamp
+        let timestamp: Element<'static, Message> = if let Some(duration) = n.duration_since() {
+            let secs = duration.as_secs();
+            let time_text = if secs < 60 {
+                "now".to_string()
+            } else if secs < 3600 {
+                format!("{}m", secs / 60)
+            } else if secs < 86400 {
+                format!("{}h", secs / 3600)
+            } else {
+                format!("{}d", secs / 86400)
+            };
+            text::caption(time_text).into()
+        } else {
+            cosmic::widget::Space::new(0, 0).into()
+        };
+
+        let header = row![app_icon_elem, app_name_text, timestamp, close_button]
+            .spacing(8)
+            .align_y(Alignment::Center);
+
+        // Body section: Image + text content
+        let mut body_elements: Vec<Element<'static, Message>> = Vec::new();
+
+        // Add notification image if present and enabled
+        if config.show_images {
+            if let Some(image) = n.image() {
+                if let Some(img_elem) = self.render_notification_image(image) {
+                    body_elements.push(img_elem);
+                }
+            }
+        }
+
+        // Text content: summary and body (owned strings for 'static lifetime)
+        let summary_text: String = n.summary.lines().next().unwrap_or_default().to_string();
+        let body_text = n.body.clone();
+
+        // Sanitize HTML and detect links in body
+        let sanitized_body_str = sanitize_html(&body_text);
+        let links = detect_links(&sanitized_body_str);
+
+        // Create body text with links (clickable if enabled)
+        // Clone strings to ensure 'static lifetime
+        let body_display: String = if config.enable_links && !links.is_empty() {
+            // Show full body when links are present
+            sanitized_body_str.clone()
+        } else {
+            // Show first line only when no links
+            sanitized_body_str.lines().next().unwrap_or_default().to_string()
+        };
+
+        let body_content: Element<'static, Message> = column![
+            text::body(summary_text).width(Length::Fill),
+            text::caption(body_display).width(Length::Fill)
+        ]
+        .spacing(4)
+        .into();
+
+        // Build body row with image (if any) + text
+        let body_section: Element<'static, Message> = if body_elements.is_empty() {
+            body_content
+        } else {
+            let img = body_elements.pop().unwrap();
+            row![img, body_content]
+                .spacing(12)
+                .align_y(Alignment::Start)
+                .into()
+        };
+
+        // Build card content
+        let mut card_content = column![header, body_section].spacing(8);
+
+        // Optional progress bar
+        if let Some(progress_value) = self.get_progress_from_hints(n) {
+            let progress_bar = notification_progress(progress_value, true);
+            card_content = card_content.push(progress_bar);
+        }
+
+        // Optional action buttons - inline creation for 'static lifetime
+        if config.show_actions && !n.actions.is_empty() {
+            // Filter to non-default actions and take up to 3
+            let visible_actions: Vec<_> = n.actions
+                .iter()
+                .filter(|(id, _)| !matches!(id, ActionId::Default))
+                .take(3)
+                .collect();
+
+            if !visible_actions.is_empty() {
+                let notification_id = n.id;
+
+                // Build action buttons inline to avoid lifetime issues
+                let mut action_elements: Vec<Element<'static, Message>> = Vec::with_capacity(visible_actions.len());
+
+                for (action_id, label) in visible_actions {
+                    let action_id_str = action_id.to_string();
+                    let label_str = label.clone();
+                    let btn: Element<'static, Message> = button::text(label_str)
+                        .on_press(Message::ActionClicked(notification_id, action_id_str))
+                        .padding([6, 12])
+                        .into();
+                    action_elements.push(btn);
+                }
+
+                // Build the row based on number of buttons
+                let action_row: Element<'static, Message> = match action_elements.len() {
+                    0 => cosmic::widget::Space::new(0, 0).into(),
+                    1 => action_elements.into_iter().next().unwrap(),
+                    2 => {
+                        let mut iter = action_elements.into_iter();
+                        row![iter.next().unwrap(), iter.next().unwrap()]
+                            .spacing(8)
+                            .align_y(Alignment::Center)
+                            .into()
+                    }
+                    _ => {
+                        let mut iter = action_elements.into_iter();
+                        row![
+                            iter.next().unwrap(),
+                            iter.next().unwrap(),
+                            iter.next().unwrap()
+                        ]
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .into()
+                    }
+                };
+                card_content = card_content.push(action_row);
+            }
+        }
+
+        // Wrap in container with padding
+        container(card_content)
+            .padding(12)
+            .width(Length::Fill)
+            .into()
+    }
+
+    /// Render notification image from Image hint
+    fn render_notification_image(&self, image: &Image) -> Option<Element<'static, Message>> {
+        match image {
+            Image::Data { width, height, data } => {
+                // Create ProcessedImage from raw data
+                let processed = ProcessedImage {
+                    data: data.clone(),
+                    width: *width,
+                    height: *height,
+                };
+                Some(notification_image(&processed, ImageSize::Thumbnail))
+            }
+            Image::File(path) => {
+                // Try to load image from file
+                match NotificationImage::from_path(path.to_str().unwrap_or_default()) {
+                    Ok(processed) => Some(notification_image(&processed, ImageSize::Thumbnail)),
+                    Err(e) => {
+                        tracing::warn!("Failed to load notification image from {}: {}", path.display(), e);
+                        None
+                    }
+                }
+            }
+            Image::Name(name) => {
+                // Use icon from name
+                Some(
+                    container(icon::from_name(name.as_str()).size(64).icon())
+                        .width(Length::Fixed(64.0))
+                        .height(Length::Fixed(64.0))
+                        .into()
+                )
+            }
+        }
+    }
+
+    /// Extract progress value from notification hints
+    fn get_progress_from_hints(&self, n: &Notification) -> Option<f32> {
+        for hint in &n.hints {
+            if let Hint::Value(value) = hint {
+                // Value hint is typically 0-100, convert to 0.0-1.0
+                let progress = (*value as f32).clamp(0.0, 100.0) / 100.0;
+                if should_show_progress(Some(progress)) {
+                    return Some(progress);
+                }
+            }
+        }
+        None
+    }
+
     fn expire(&mut self, i: u32) {
         let Some((c_pos, _)) = self.cards.iter().enumerate().find(|(_, n)| n.id == i) else {
             return;
@@ -598,6 +825,21 @@ impl cosmic::Application for CosmicNotifications {
                     cosmic::app::Action::Surface(a),
                 ));
             }
+            Message::LinkClicked(url) => {
+                // Open link in default browser
+                if cosmic_notifications_util::is_safe_url(&url) {
+                    if let Err(e) = cosmic_notifications_util::open_link(&url) {
+                        tracing::error!("Failed to open link {}: {}", url, e);
+                    }
+                } else {
+                    tracing::warn!("Blocked unsafe URL: {}", url);
+                }
+            }
+            Message::ActionClicked(id, action_id) => {
+                // Handle action button click - request activation with the action
+                tracing::trace!("action clicked for {id}: {action_id}");
+                return self.request_activation(id, Some(action_id.parse().unwrap_or(ActionId::Default)));
+            }
         }
         Task::none()
     }
@@ -611,48 +853,15 @@ impl cosmic::Application for CosmicNotifications {
                 .into();
         }
 
+        // Get rich card config from settings
+        let card_config = RichCardConfig::from_notifications_config(&self.config);
+
         let (ids, notif_elems): (Vec<_>, Vec<_>) = self
             .cards
             .iter()
             .rev()
             .map(|n| {
-                let app_name = text::caption(if n.app_name.len() > 24 {
-                    Cow::from(format!(
-                        "{:.26}...",
-                        n.app_name.lines().next().unwrap_or_default()
-                    ))
-                } else {
-                    Cow::from(&n.app_name)
-                })
-                .width(Length::Fill);
-
-                let close_notif = button::custom(
-                    icon::from_name("window-close-symbolic")
-                        .size(16)
-                        .symbolic(true),
-                )
-                .on_press(Message::Dismissed(n.id))
-                .class(cosmic::theme::Button::Text);
-                let e = Element::from(
-                    column!(
-                        if let Some(icon) = n.notification_icon() {
-                            row![icon.size(16), app_name, close_notif]
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                        } else {
-                            row![app_name, close_notif]
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                        },
-                        column![
-                            text::body(n.summary.lines().next().unwrap_or_default())
-                                .width(Length::Fill),
-                            text::caption(n.body.lines().next().unwrap_or_default())
-                                .width(Length::Fill)
-                        ]
-                    )
-                    .width(Length::Fill),
-                );
+                let e = self.render_rich_notification(n, &card_config);
                 (n.id, e)
             })
             .take(self.config.max_notifications as usize)
