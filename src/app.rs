@@ -1,3 +1,33 @@
+// Performance and Animation Guidelines
+// =====================================
+//
+// This application uses cosmic_time::Timeline for smooth animations with the
+// following performance targets and considerations:
+//
+// ## Performance Targets
+// - Minimum framerate: 30 FPS (33ms per frame)
+// - Target framerate: 60 FPS (16ms per frame) for smooth animations
+// - Animation durations: 200-400ms for snappy feel
+//
+// ## Animation System
+// - Card entry/exit: Handled by anim! macro, adapts to card height
+// - Image fade-in: 200ms linear opacity transition
+// - Progress bars: 300ms smooth value interpolation
+//
+// ## Memory Considerations
+// - Maximum concurrent image notifications: Recommend limiting to 10-15
+//   to avoid excessive memory usage with large images
+// - Each rich notification with image can use 100-500KB depending on image size
+// - Progress animation state: ~24 bytes per notification (negligible)
+// - Image fade state: ~16 bytes per notification (negligible)
+//
+// ## Performance Notes
+// - All animations use lightweight linear interpolation
+// - No blocking operations on UI thread
+// - Image decoding happens in subscription, not in render path
+// - Timeline updates are batched via Frame subscription
+// - Card list animations are handled efficiently by cosmic_time::anim! macro
+
 use crate::subscriptions::notifications;
 use cosmic::app::{Core, Settings};
 use cosmic::cosmic_config::{Config, CosmicConfigEntry};
@@ -280,13 +310,14 @@ impl CosmicNotifications {
                     bottom: 8,
                     left: 8,
                 },
-                size: Some((Some(300), Some(1))),
+                // Updated width from 300px to 380px for rich notifications
+                size: Some((Some(380), Some(1))),
                 output: IcedOutput::Active, // TODO should we only create the notification on the output the applet is on?
                 size_limits: Limits::NONE
                     .min_width(300.0)
                     .min_height(1.0)
                     .max_height(1920.0)
-                    .max_width(300.0),
+                    .max_width(380.0),
                 ..Default::default()
             }));
         };
@@ -627,6 +658,10 @@ impl cosmic::Application for CosmicNotifications {
             .take(self.config.max_notifications as usize)
             .unzip();
 
+        // Card list with animations - width increased from 300px to 380px
+        // for rich notifications with images and progress bars.
+        // The anim! macro handles smooth entry/exit animations based on card
+        // height automatically. Taller rich cards animate smoothly from the edge.
         let card_list = anim!(
             //cards
             self.notifications_id.clone(),
@@ -641,12 +676,13 @@ impl cosmic::Application for CosmicNotifications {
             None,
             true,
         )
-        .width(Length::Fixed(300.));
+        .width(Length::Fixed(380.));
 
+        // Autosize container updated to match new 380px card width
         autosize::autosize(card_list, self.autosize_id.clone())
             .min_width(200.)
             .min_height(100.)
-            .max_width(300.)
+            .max_width(380.)
             .max_height(1920.)
             .into()
     }
