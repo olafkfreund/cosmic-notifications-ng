@@ -131,10 +131,8 @@ in
 
     environment.systemPackages = mkIf (!cfg.replaceSystemPackage) [ cfg.package ];
 
-    xdg.configFile."cosmic-notifications-ng/config.toml" = mkIf (cfg.settings != { }) {
-      source = configFile;
-    };
-
+    # Config setup script - runs before the service starts
+    # Creates the config directory and writes the config file
     systemd.user.services.cosmic-notifications-ng = {
       description = "COSMIC Notifications NG Daemon";
       documentation = [ "https://github.com/cosmic-notifications-ng" ];
@@ -146,14 +144,26 @@ in
       serviceConfig = {
         Type = "dbus";
         BusName = "org.freedesktop.Notifications";
+        ExecStartPre = mkIf (cfg.settings != { }) (
+          let
+            setupScript = pkgs.writeShellScript "cosmic-notifications-ng-setup" ''
+              mkdir -p "$HOME/.config/cosmic-notifications-ng"
+              cp -f ${configFile} "$HOME/.config/cosmic-notifications-ng/config.toml"
+              chmod 644 "$HOME/.config/cosmic-notifications-ng/config.toml"
+            '';
+          in
+          "${setupScript}"
+        );
         ExecStart = "${cfg.package}/bin/cosmic-notifications";
         Restart = "on-failure";
         RestartSec = 3;
 
         Slice = "session.slice";
 
+        # Security hardening
         ProtectSystem = "strict";
-        ProtectHome = true;
+        ProtectHome = "read-only";
+        ReadWritePaths = [ "%h/.config/cosmic-notifications-ng" ];
         PrivateTmp = true;
         NoNewPrivileges = true;
         RestrictSUIDSGID = true;
