@@ -197,19 +197,19 @@ impl CosmicNotifications {
         let sanitized_body_str = sanitize_html(&body_text);
         let links = detect_links(&sanitized_body_str);
 
-        // Create body text with links (clickable if enabled)
-        // Clone strings to ensure 'static lifetime
-        let body_display: String = if config.enable_links && !links.is_empty() {
-            // Show full body when links are present
-            sanitized_body_str.clone()
+        // Create body text with clickable links if enabled
+        let body_element: Element<'static, Message> = if config.enable_links && !links.is_empty() {
+            // Build text with clickable link segments
+            self.render_body_with_links(&sanitized_body_str, &links)
         } else {
             // Show first line only when no links
-            sanitized_body_str.lines().next().unwrap_or_default().to_string()
+            let body_display = sanitized_body_str.lines().next().unwrap_or_default().to_string();
+            text::caption(body_display).width(Length::Fill).into()
         };
 
         let body_content: Element<'static, Message> = column![
             text::body(summary_text).width(Length::Fill),
-            text::caption(body_display).width(Length::Fill)
+            body_element
         ]
         .spacing(4)
         .into();
@@ -339,6 +339,89 @@ impl CosmicNotifications {
             }
         }
         None
+    }
+
+    /// Render body text with clickable link segments
+    ///
+    /// For simplicity, renders the full body text followed by clickable link buttons.
+    /// This avoids complex text segmentation while still making links clickable.
+    fn render_body_with_links(
+        &self,
+        body: &str,
+        links: &[cosmic_notifications_util::NotificationLink],
+    ) -> Element<'static, Message> {
+        // Show the full body text
+        let body_text: Element<'static, Message> = text::caption(body.to_string())
+            .width(Length::Fill)
+            .into();
+
+        // If only one link, show body + single link button
+        if links.len() == 1 {
+            let link = &links[0];
+            let url = link.url.clone();
+            let display_url = if url.len() > 40 {
+                format!("{}...", &url[..37])
+            } else {
+                url.clone()
+            };
+
+            let link_button: Element<'static, Message> = button::text(format!("🔗 {}", display_url))
+                .on_press(Message::LinkClicked(url))
+                .class(cosmic::theme::Button::Link)
+                .padding([2, 4])
+                .into();
+
+            return column![body_text, link_button]
+                .spacing(4)
+                .width(Length::Fill)
+                .into();
+        }
+
+        // Multiple links - show body + row of link buttons
+        let mut link_elements: Vec<Element<'static, Message>> = Vec::with_capacity(links.len().min(3));
+
+        for link in links.iter().take(3) {
+            let url = link.url.clone();
+            let display_url = if url.len() > 30 {
+                format!("{}...", &url[..27])
+            } else {
+                url.clone()
+            };
+
+            let link_button: Element<'static, Message> = button::text(format!("🔗 {}", display_url))
+                .on_press(Message::LinkClicked(url))
+                .class(cosmic::theme::Button::Link)
+                .padding([2, 4])
+                .into();
+
+            link_elements.push(link_button);
+        }
+
+        // Build row of link buttons
+        let links_row: Element<'static, Message> = match link_elements.len() {
+            1 => link_elements.into_iter().next().unwrap(),
+            2 => {
+                let mut iter = link_elements.into_iter();
+                column![iter.next().unwrap(), iter.next().unwrap()]
+                    .spacing(2)
+                    .into()
+            }
+            _ => {
+                let mut iter = link_elements.into_iter();
+                column![
+                    iter.next().unwrap(),
+                    iter.next().unwrap(),
+                    iter.next().unwrap()
+                ]
+                .spacing(2)
+                .into()
+            }
+        };
+
+        column![body_text, links_row]
+            .spacing(4)
+            .width(Length::Fill)
+            .into()
     }
 
     fn expire(&mut self, i: u32) {
