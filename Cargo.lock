@@ -1218,6 +1218,7 @@ dependencies = [
  "libcosmic",
  "rust-embed",
  "rustix 1.1.3",
+ "serde_json",
  "smithay-client-toolkit 0.20.0",
  "tokio",
  "tracing",

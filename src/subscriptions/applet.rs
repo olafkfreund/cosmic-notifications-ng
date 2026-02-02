@@ -15,6 +15,8 @@ use anyhow::{Result, bail};
 use cosmic_notifications_util::DAEMON_NOTIFICATIONS_FD;
 use std::os::unix::io::FromRawFd;
 
+use serde_json;
+
 pub async fn setup_panel_conn(tx: Sender<Input>) -> Result<Connection> {
     let socket = setup_panel_socket()?;
     let guid = Guid::generate();
@@ -196,5 +198,47 @@ impl NotificationsApplet {
         }).collect();
 
         Ok(result)
+    }
+
+    pub async fn get_history_full(&self) -> zbus::fdo::Result<Vec<String>> {
+        tracing::trace!("Received get_history_full request from applet");
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        let res = self.tx.send(Input::GetHistory { tx }).await;
+        if let Err(err) = res {
+            tracing::error!("Failed to send get_history_full message to channel");
+            return Err(zbus::fdo::Error::Failed(err.to_string()));
+        }
+
+        // Wait for response with timeout
+        let notifications = match tokio::time::timeout(
+            tokio::time::Duration::from_secs(2),
+            rx
+        ).await {
+            Ok(Ok(notifs)) => notifs,
+            Ok(Err(err)) => {
+                tracing::error!("Failed to receive full history: {}", err);
+                return Err(zbus::fdo::Error::Failed("Channel closed".to_string()));
+            }
+            Err(_) => {
+                tracing::error!("Timeout waiting for full history");
+                return Err(zbus::fdo::Error::Failed("Timeout".to_string()));
+            }
+        };
+
+        // Serialize each notification to JSON
+        let result: Result<Vec<_>, _> = notifications
+            .into_iter()
+            .map(|n| {
+                serde_json::to_string(&n)
+                    .map_err(|e| {
+                        tracing::error!("Failed to serialize notification {}: {}", n.id, e);
+                        zbus::fdo::Error::Failed(format!("Serialization error: {}", e))
+                    })
+            })
+            .collect();
+
+        result
     }
 }
