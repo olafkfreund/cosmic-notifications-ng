@@ -51,6 +51,14 @@ impl Conns {
                     )
                     .ok()
                 })
+                // Also serve the applet interface on session bus for history API access
+                .and_then(|conn| {
+                    conn.serve_at(
+                        "/com/system76/NotificationsApplet",
+                        NotificationsApplet { tx: tx.clone() },
+                    )
+                    .ok()
+                })
                 .map(ConnectionBuilder::build)
             {
                 if let Ok(conn) = conn.await {

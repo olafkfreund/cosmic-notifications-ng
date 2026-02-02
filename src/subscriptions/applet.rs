@@ -125,7 +125,7 @@ impl NotificationsSocket {
 }
 
 pub struct NotificationsApplet {
-    tx: Sender<Input>,
+    pub tx: Sender<Input>,
 }
 
 #[allow(clippy::too_many_arguments)]
