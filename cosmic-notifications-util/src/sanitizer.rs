@@ -1,5 +1,16 @@
 use ammonia::Builder;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::collections::HashSet;
+
+// Static regex patterns compiled once at first use
+static TAG_PATTERN: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"<\s*/?(?:b|i|u|a|p|br)(?:\s+[^>]*)?>").unwrap()
+});
+
+static HREF_PATTERN: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r#"<a\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([^<]*)</a>"#).unwrap()
+});
 
 /// Sanitize HTML for safe display in notifications.
 ///
@@ -47,8 +58,7 @@ pub fn sanitize_html(html: &str) -> String {
 pub fn has_rich_content(text: &str) -> bool {
   // Match actual HTML tags like <b>, <i>, <u>, <a>, <p>, <br>
   // Don't match escaped entities like &lt;b&gt; or math operators like 5 < 10
-  let tag_pattern = regex::Regex::new(r"<\s*/?(?:b|i|u|a|p|br)(?:\s+[^>]*)?>").unwrap();
-  tag_pattern.is_match(text)
+  TAG_PATTERN.is_match(text)
 }
 
 /// Strip all HTML tags, returning plain text.
@@ -121,11 +131,7 @@ pub fn extract_hrefs(html: &str) -> Vec<(String, String)> {
   // and any actual dangerous tags/attributes are stripped.
 
   // Extract from actual (non-encoded) anchor tags first
-  let href_regex = regex::Regex::new(
-    r#"<a\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([^<]*)</a>"#
-  ).unwrap();
-
-  let mut results: Vec<(String, String)> = href_regex
+  let mut results: Vec<(String, String)> = HREF_PATTERN
     .captures_iter(html)
     .filter_map(|cap| {
       let url = cap.get(1)?.as_str().to_string();
@@ -144,7 +150,7 @@ pub fn extract_hrefs(html: &str) -> Vec<(String, String)> {
   let decoded = decode_entities(html);
 
   // Extract from decoded content, but only add if not already found
-  for cap in href_regex.captures_iter(&decoded) {
+  for cap in HREF_PATTERN.captures_iter(&decoded) {
     if let (Some(url_match), Some(text_match)) = (cap.get(1), cap.get(2)) {
       let url = url_match.as_str().to_string();
       let text = text_match.as_str().to_string();

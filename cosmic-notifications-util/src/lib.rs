@@ -47,7 +47,7 @@ pub use urgency_style::{
 use cosmic::widget::{Icon, icon};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap, convert::Infallible, fmt, path::PathBuf, str::FromStr, time::SystemTime,
+    collections::HashMap, convert::Infallible, fmt, path::PathBuf, str::FromStr, sync::Arc, time::SystemTime,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -125,7 +125,7 @@ impl Notification {
                             Hint::Image(Image::Data {
                                 width: image.width,
                                 height: image.height,
-                                data: image.data,
+                                data: Arc::new(image.data),
                             })
                         }),
                         Err(err) => {
@@ -256,7 +256,7 @@ impl Notification {
                 width,
                 height,
                 data,
-            }) => Some(icon::from_raster_pixels(*width, *height, data.clone()).icon()),
+            }) => Some(icon::from_raster_pixels(*width, *height, (**data).clone()).icon()),
             None => {
                 (!self.app_icon.is_empty()).then(|| icon::from_name(self.app_icon.as_str()).icon())
             }
@@ -353,7 +353,7 @@ impl Hint {
             Hint::Image(img) => match img {
                 Image::Name(s) => s.len() + 8,
                 Image::File(p) => p.as_os_str().len() + 8,
-                Image::Data { data, .. } => data.len() + 32,
+                Image::Data { data, .. } => data.len() + 32, // Arc overhead is minimal
             },
             Hint::IconData(data) => data.len() + 8,
             Hint::Resident(_) => 8,
@@ -379,7 +379,7 @@ pub enum Image {
     Data {
         width: u32,
         height: u32,
-        data: Vec<u8>,
+        data: Arc<Vec<u8>>,
     },
 }
 

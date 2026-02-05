@@ -203,7 +203,7 @@ mod tests {
             Hint::Image(Image::Data {
                 width: 1,
                 height: 1,
-                data: data.clone(),
+                data: std::sync::Arc::new(data.clone()),
             }),
         ];
 

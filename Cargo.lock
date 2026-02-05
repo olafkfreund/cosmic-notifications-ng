@@ -1325,6 +1325,7 @@ dependencies = [
  "image",
  "libcosmic",
  "linkify",
+ "once_cell",
  "open",
  "regex",
  "rodio",
