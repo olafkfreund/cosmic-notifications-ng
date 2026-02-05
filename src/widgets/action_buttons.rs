@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use cosmic::iced::Alignment;
 use cosmic::iced_widget::row;
 use cosmic::widget::button;

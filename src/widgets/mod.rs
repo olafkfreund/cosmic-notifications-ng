@@ -5,9 +5,7 @@ pub mod notification_image;
 pub mod progress_bar;
 pub mod rich_card;
 
-pub use action_buttons::*;
-pub use image_animator::*;
-pub use linkified_text::*;
-pub use notification_image::*;
-pub use progress_bar::*;
-pub use rich_card::*;
+// Re-export items used by app.rs and rendering/cards.rs
+pub use notification_image::{notification_image, ImageSize};
+pub use progress_bar::{notification_progress, should_show_progress};
+pub use rich_card::RichCardConfig;

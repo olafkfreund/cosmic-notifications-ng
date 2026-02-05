@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use cosmic::iced::Length;
 use cosmic::widget::{container, icon};
 use cosmic::Element;

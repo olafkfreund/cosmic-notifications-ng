@@ -5,7 +5,7 @@ use cosmic::iced_widget::{column, container};
 use cosmic::widget::{icon, text};
 use cosmic::Element;
 use cosmic_notifications_util::{
-    parse_markup, strip_html, sanitize_html, Image, Notification, NotificationImage,
+    parse_markup, sanitize_html, Image, Notification, NotificationImage,
     NotificationLink, ProcessedImage,
 };
 

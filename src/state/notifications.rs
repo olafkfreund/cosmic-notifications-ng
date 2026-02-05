@@ -1,10 +1,13 @@
+#![allow(dead_code)]
+
 use cosmic_notifications_util::Notification;
 use std::collections::VecDeque;
 
 /// Manages the state of notification queues
 ///
 /// Handles both visible notification cards and hidden notification history
-/// with memory budget management.
+/// with memory budget management. Some methods are prepared for future
+/// integration with the notification grouping and per-app rules systems.
 pub struct NotificationState {
     /// Currently visible notification cards
     cards: Vec<Notification>,

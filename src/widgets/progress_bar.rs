@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use cosmic::iced::{Alignment, Length};
 use cosmic::iced_widget::{progress_bar, row};
 use cosmic::widget::text;
