@@ -29,7 +29,7 @@
 // - Card list animations are handled efficiently by cosmic_time::anim! macro
 
 use crate::subscriptions::notifications;
-use crate::widgets::{notification_progress, should_show_progress, RichCardConfig};
+use crate::widgets::{notification_progress, RichCardConfig};
 use cosmic::app::{Core, Settings};
 use cosmic::cosmic_config::{Config, CosmicConfigEntry};
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
@@ -42,7 +42,6 @@ use cosmic::iced::platform_specific::shell::wayland::commands::{
 use cosmic::iced::{self, Length, Limits, Subscription};
 use cosmic::iced_runtime::core::window::Id as SurfaceId;
 use cosmic::iced_widget::{column, row, vertical_space};
-use cosmic::surface;
 use cosmic::widget::{autosize, button, container, icon, text};
 use cosmic::{Application, Element, app::Task};
 use cosmic_notifications_config::NotificationsConfig;
@@ -55,7 +54,7 @@ use crate::state::NotificationState;
 use crate::handlers::Message;
 use crate::rendering::{render_notification_image, render_markup_body, render_body_with_links, get_progress_from_hints};
 use cosmic_panel_config::{CosmicPanelConfig, CosmicPanelOuput, PanelAnchor};
-use cosmic_time::{Instant, Timeline, anim, id};
+use cosmic_time::{Timeline, anim, id};
 use iced::Alignment;
 use std::borrow::Cow;
 use std::time::Duration;
@@ -699,7 +698,7 @@ impl cosmic::Application for CosmicNotifications {
         &mut self.core
     }
 
-    fn view(&self) -> Element<Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         unimplemented!();
     }
 
@@ -799,7 +798,7 @@ impl cosmic::Application for CosmicNotifications {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn view_window(&self, _: SurfaceId) -> Element<Message> {
+    fn view_window(&self, _: SurfaceId) -> Element<'_, Message> {
         if self.state.is_empty() {
             return container(vertical_space().height(Length::Fixed(1.0)))
                 .center_x(Length::Fixed(1.0))

@@ -27,6 +27,7 @@ pub enum Message {
     /// No-op message
     Ignore,
     /// Surface action
+    #[allow(dead_code)]
     Surface(surface::Action),
     /// Link clicked in notification body
     LinkClicked(String),

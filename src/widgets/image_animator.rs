@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs, dead_code)]
+
 use std::time::Instant;
 
 #[cfg(feature = "image")]

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use cosmic::iced::{Alignment, Length};
 use cosmic::iced_widget::{column, row};
 use cosmic::widget::{button, container, icon, text};

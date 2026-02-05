@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use cosmic::widget::text;
 use cosmic::Element;
 use cosmic_notifications_util::NotificationLink;
