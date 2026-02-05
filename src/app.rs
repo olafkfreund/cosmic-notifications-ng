@@ -373,8 +373,9 @@ impl CosmicNotifications {
         match image {
             Image::Data { width, height, data } => {
                 // Create ProcessedImage from raw data
+                // Clone the inner Vec from Arc - only happens during rendering
                 let processed = ProcessedImage {
-                    data: data.clone(),
+                    data: (**data).clone(),
                     width: *width,
                     height: *height,
                 };
