@@ -1,6 +1,9 @@
 # Cosmic Notifications NG
 
-Enhanced Layer Shell notifications daemon for the COSMIC desktop environment, featuring **rich notification support** including images, action buttons, progress indicators, clickable URLs, and animated content.
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/olafkfreund/cosmic-notifications-ng/releases/tag/v0.3.0)
+[![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
+
+Enhanced Layer Shell notifications daemon for the COSMIC desktop environment, featuring **rich notification support** including images, action buttons, progress indicators, clickable URLs, animated content, **per-app notification rules**, and **notification grouping**.
 
 ## What Makes This Different
 
@@ -15,6 +18,8 @@ This is an enhanced fork of the standard COSMIC notifications daemon with signif
 | **Progress Bars** | Basic | Smooth animated progress with value hints |
 | **HTML Sanitization** | Limited | Full ammonia-based XSS protection |
 | **Action Buttons** | Basic | Themed buttons with proper DBus signals |
+| **Per-App Rules** | Not supported | Mute apps, override urgency, control sounds per-app |
+| **Notification Grouping** | Not supported | Group by app or category with count badges |
 | **Configuration** | Limited | Extensive TOML-based configuration |
 | **NixOS Module** | Not provided | Full NixOS module with overlay support |
 
@@ -75,32 +80,124 @@ COSMIC Notifications implements the full [freedesktop.org Notification Specifica
   - Automatic removal of dangerous tags (script, iframe, etc.)
   - Protection against XSS attacks
 
+### Per-Application Rules (v0.3.0+)
+
+Configure notification behavior on a per-app basis:
+
+- **Enable/Disable** - Mute notifications from specific apps entirely
+- **Urgency Override** - Force urgency level (low/normal/critical) for an app
+- **Sound Control** - Enable or disable sounds per application
+- **Timeout Override** - Custom timeout duration per app
+- **Matching** - Match by `app_name` or `desktop_entry` (more specific)
+
+Example configuration:
+
+```toml
+[[app_rules]]
+app_name = "Slack"
+enabled = true
+urgency_override = 2  # Always critical
+sound_enabled = true
+
+[[app_rules]]
+app_name = "Firefox"
+desktop_entry = "firefox"
+enabled = true
+sound_enabled = false  # Silent browsing
+
+[[app_rules]]
+app_name = "Steam"
+enabled = false  # Mute all Steam notifications
+```
+
+### Notification Grouping (v0.3.0+)
+
+Group notifications together for a cleaner display:
+
+- **GroupingMode::None** - Default behavior, no grouping
+- **GroupingMode::ByApp** - Stack notifications from the same application
+- **GroupingMode::ByCategory** - Group by category hint (email, messages, network, etc.)
+
+Configuration options:
+
+```toml
+# Grouping mode: "None", "ByApp", or "ByCategory"
+grouping_mode = "ByApp"
+
+# Maximum notifications per group before collapsing
+max_per_group = 3
+
+# Show count badge (e.g., "Firefox (3)")
+show_group_count = true
+```
+
+Category grouping automatically normalizes categories:
+- `email.*` → "Email"
+- `im.*` → "Messages"
+- `network.*` → "Network"
+- `device.*` → "Devices"
+
 ### Configuration
 
 Configure notification behavior via COSMIC Settings or directly in configuration files:
 
 ```toml
+# === Display Options ===
 # Show images in notifications (default: true)
 show_images = true
 
 # Show action buttons (default: true)
 show_actions = true
 
-# Maximum image size in pixels (default: 128)
+# Maximum image size in pixels (default: 128, range: 32-256)
 max_image_size = 128
 
 # Enable clickable links (default: true)
 enable_links = true
 
-# Enable animated images (default: true)
+# Enable animated images and card animations (default: true)
 enable_animations = true
+
+# === Notification Limits ===
+# Maximum visible notifications (default: 3)
+max_notifications = 3
+
+# Maximum notifications per app when constrained (default: 2)
+max_per_app = 2
+
+# === Grouping (v0.3.0+) ===
+# Grouping mode: "None", "ByApp", or "ByCategory"
+grouping_mode = "None"
+
+# Maximum notifications per group (default: 3)
+max_per_group = 3
+
+# Show group count badge (default: true)
+show_group_count = true
+
+# === Per-App Rules (v0.3.0+) ===
+# See "Per-Application Rules" section above for examples
+app_rules = []
 ```
 
 ### Performance
 
-- **Target:** 30 FPS for animations
+- **Target:** 60 FPS for animations (30 FPS minimum)
 - **Memory:** < 100MB with multiple rich notifications
+- **Memory Budget:** 50MB limit for hidden notifications (auto-pruning)
 - **Efficiency:** Hardware-accelerated rendering via iced/wgpu
+- **Optimizations (v0.3.0+):**
+  - Arc-wrapped image data eliminates expensive cloning in hot paths
+  - Static regex compilation with once_cell for link detection
+  - Rate limiting: 60 notifications/minute per application
+
+### Security
+
+- **XSS Protection:** Multi-pass HTML sanitization with ammonia
+- **Rate Limiting:** Prevents notification flooding (60/min/app, max 1000 apps tracked)
+- **Memory Protection:** Budget limits prevent memory exhaustion attacks
+- **Sound Path Validation:** Whitelist-based sound file path validation
+- **Thread Limits:** Maximum 4 concurrent sound playback threads
 
 ## Usage Examples
 
@@ -215,9 +312,13 @@ Add this flake to your `flake.nix` inputs:
 | `replaceSystemPackage` | bool | `true` | Replace system cosmic-notifications via overlay |
 | `settings.show_images` | bool | `true` | Show images in notifications |
 | `settings.show_actions` | bool | `true` | Show action buttons |
-| `settings.max_image_size` | int | `128` | Maximum image size in pixels |
+| `settings.max_image_size` | int | `128` | Maximum image size in pixels (32-256) |
 | `settings.enable_links` | bool | `true` | Make URLs clickable |
 | `settings.enable_animations` | bool | `true` | Enable GIF/APNG/WebP animations |
+| `settings.grouping_mode` | string | `"None"` | Grouping: "None", "ByApp", "ByCategory" |
+| `settings.max_per_group` | int | `3` | Max notifications per group |
+| `settings.show_group_count` | bool | `true` | Show count badge on groups |
+| `settings.app_rules` | list | `[]` | Per-application notification rules |
 
 ### Quick Overlay Installation
 
