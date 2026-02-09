@@ -28,6 +28,7 @@
 // - Timeline updates are batched via Frame subscription
 // - Card list animations are handled efficiently by cosmic_time::anim! macro
 
+use crate::rendering::build_element_row;
 use crate::subscriptions::notifications;
 use crate::widgets::{notification_progress, RichCardConfig};
 use cosmic::app::{Core, Settings};
@@ -299,46 +300,18 @@ impl CosmicNotifications {
                     action_elements.push(btn);
                 }
 
-                // Build the row based on number of buttons
-                let action_row: Element<'static, Message> = match action_elements.len() {
-                    0 => cosmic::widget::Space::new(0, 0).into(),
-                    1 => {
-                        let mut iter = action_elements.into_iter();
-                        match iter.next() {
-                            Some(btn) => btn,
-                            None => {
-                                tracing::warn!("Expected 1 action button but iterator was empty");
-                                cosmic::widget::Space::new(0, 0).into()
-                            }
-                        }
-                    }
-                    2 => {
-                        let mut iter = action_elements.into_iter();
-                        match (iter.next(), iter.next()) {
-                            (Some(btn1), Some(btn2)) => row![btn1, btn2]
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                                .into(),
-                            _ => {
-                                tracing::warn!("Expected 2 action buttons but not all were available");
-                                cosmic::widget::Space::new(0, 0).into()
-                            }
-                        }
-                    }
-                    _ => {
-                        let mut iter = action_elements.into_iter();
-                        match (iter.next(), iter.next(), iter.next()) {
-                            (Some(btn1), Some(btn2), Some(btn3)) => row![btn1, btn2, btn3]
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                                .into(),
-                            _ => {
-                                tracing::warn!("Expected 3 action buttons but not all were available");
-                                cosmic::widget::Space::new(0, 0).into()
-                            }
-                        }
-                    }
-                };
+                // Build the row based on number of buttons using helper
+                let action_row = build_element_row(
+                    action_elements,
+                    |elems| {
+                        let r: cosmic::iced_widget::Row<'static, Message, cosmic::Theme, cosmic::Renderer> = elems.into_iter().fold(
+                            cosmic::iced_widget::Row::new().spacing(8).align_y(Alignment::Center),
+                            |row, elem| row.push(elem),
+                        );
+                        r.into()
+                    },
+                    "action button",
+                );
                 card_content = card_content.push(action_row);
             }
         }
