@@ -127,43 +127,18 @@ pub fn render_body_with_links(
         link_elements.push(link_button);
     }
 
-    // Build row of link buttons
-    let links_row: Element<'static, Message> = match link_elements.len() {
-        1 => {
-            let mut iter = link_elements.into_iter();
-            match iter.next() {
-                Some(btn) => btn,
-                None => {
-                    tracing::warn!("Expected 1 link button but iterator was empty");
-                    cosmic::widget::Space::new(0, 0).into()
-                }
-            }
-        }
-        2 => {
-            let mut iter = link_elements.into_iter();
-            match (iter.next(), iter.next()) {
-                (Some(btn1), Some(btn2)) => column![btn1, btn2]
-                    .spacing(2)
-                    .into(),
-                _ => {
-                    tracing::warn!("Expected 2 link buttons but not all were available");
-                    cosmic::widget::Space::new(0, 0).into()
-                }
-            }
-        }
-        _ => {
-            let mut iter = link_elements.into_iter();
-            match (iter.next(), iter.next(), iter.next()) {
-                (Some(btn1), Some(btn2), Some(btn3)) => column![btn1, btn2, btn3]
-                    .spacing(2)
-                    .into(),
-                _ => {
-                    tracing::warn!("Expected 3 link buttons but not all were available");
-                    cosmic::widget::Space::new(0, 0).into()
-                }
-            }
-        }
-    };
+    // Build row of link buttons using helper
+    let links_row = build_element_row(
+        link_elements,
+        |elems| {
+            let c: cosmic::iced_widget::Column<'static, Message, cosmic::Theme, cosmic::Renderer> = elems.into_iter().fold(
+                cosmic::iced_widget::Column::new().spacing(2),
+                |col, elem| col.push(elem),
+            );
+            c.into()
+        },
+        "link button",
+    );
 
     column![body_text, links_row]
         .spacing(4)
@@ -186,4 +161,43 @@ pub fn get_progress_from_hints(n: &Notification) -> Option<f32> {
         }
     }
     None
+}
+
+/// Build an element from a list of elements, combining them with the given combiner function
+///
+/// Handles 0, 1, 2, 3+ elements gracefully with appropriate warnings for edge cases.
+/// The combiner function is called for 2+ elements to allow flexible layouts (row vs column).
+///
+/// # Arguments
+/// * `elements` - Vector of UI elements to combine
+/// * `combiner` - Closure that combines multiple elements into a single element
+/// * `context` - Description of element type for warning messages (e.g., "action button", "link button")
+///
+/// # Returns
+/// A single Element that either:
+/// - Returns empty space for 0 elements
+/// - Returns the single element directly for 1 element
+/// - Calls combiner for 2+ elements to create combined layout
+pub fn build_element_row<F>(
+    elements: Vec<Element<'static, Message>>,
+    combiner: F,
+    context: &str,
+) -> Element<'static, Message>
+where
+    F: FnOnce(Vec<Element<'static, Message>>) -> Element<'static, Message>,
+{
+    match elements.len() {
+        0 => cosmic::widget::Space::new(0, 0).into(),
+        1 => {
+            let mut iter = elements.into_iter();
+            match iter.next() {
+                Some(e) => e,
+                None => {
+                    tracing::warn!("Expected 1 {} but iterator was empty", context);
+                    cosmic::widget::Space::new(0, 0).into()
+                }
+            }
+        }
+        _ => combiner(elements),
+    }
 }
